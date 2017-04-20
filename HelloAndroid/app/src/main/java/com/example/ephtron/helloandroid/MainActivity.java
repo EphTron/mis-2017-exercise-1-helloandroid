@@ -1,20 +1,30 @@
 package com.example.ephtron.helloandroid;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.LinearLayout.LayoutParams;
+import android.widget.Toast;
 
 import org.w3c.dom.Text;
 
@@ -44,6 +54,7 @@ public class MainActivity extends AppCompatActivity {
         urlInput = (EditText) findViewById(R.id.url_input);
         resultLayout = (LinearLayout) findViewById(R.id.result_layout);
         radioButtons = (RadioGroup) findViewById(R.id.radio_buttons);
+        updateStatusText("Ready");
     }
 
     private void updateStatusText(String s) {
@@ -58,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
         NetworkInfo networkInfo = connection.getActiveNetworkInfo();
 
         if (networkInfo != null && networkInfo.isConnected()) {
-            updateStatusText("Connected.");
+            updateStatusText("Internet available.");
 
             // Check and add "http://"
             url = urlInput.getText().toString();
@@ -70,12 +81,12 @@ public class MainActivity extends AppCompatActivity {
             int selectedButton = radioButtons.getCheckedRadioButtonId();
             if (selectedButton == R.id.plain_button){
                 mode="plain";
-            }else if (selectedButton==R.id.image_button) {
-                mode="image";
+                updateStatusText("Fetching Plaintext...");
             }else if (selectedButton==R.id.html_button) {
                 mode="html";
+                updateStatusText("Fetching Website...");
             }
-            new HTTPTask().execute(url);
+            createResultView(url);
         } else {
             updateStatusText("No connection available");
         }
@@ -89,7 +100,9 @@ public class MainActivity extends AppCompatActivity {
         try {
             _url = new URL(url);
         } catch (MalformedURLException e) {
+            System.out.println("Malformed");
             e.printStackTrace();
+            result = "Error " + e.getMessage().toString();
             return result;
         }
 
@@ -97,7 +110,9 @@ public class MainActivity extends AppCompatActivity {
         try {
             urlConnection = (HttpURLConnection) _url.openConnection();
         } catch (IOException e) {
+            System.out.println("Connection Problem");
             e.printStackTrace();
+            result = "Error " + e.getMessage().toString();
             return result;
         }
 
@@ -105,7 +120,10 @@ public class MainActivity extends AppCompatActivity {
             InputStream in = new BufferedInputStream(urlConnection.getInputStream());
             result = readStream(in);
         } catch (IOException e) {
+            System.out.println("Stream related problem");
             e.printStackTrace();
+            result = "Error " + e.getMessage().toString();
+            return result;
         } finally {
             urlConnection.disconnect();
         }
@@ -122,39 +140,45 @@ public class MainActivity extends AppCompatActivity {
                 result.append(line);
             }
         } catch (IOException e) {
+            System.out.println("Stream reading problem");
             e.printStackTrace();
-
+            return "Error " + e.getMessage().toString();
         }
         System.out.println(result.toString());
         return result.toString();
     }
 
-    public void createView() {
-        // Add textview 1
-        TextView textView1 = new TextView(this);
-        textView1.setLayoutParams(new LayoutParams(LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT));
-        textView1.setText("programmatically created TextView1");
-        textView1.setBackgroundColor(0xff66ff66); // hex color 0xAARRGGBB
-        textView1.setPadding(20, 20, 20, 20);// in pixels (left, top, right, bottom)
-        resultLayout.addView(textView1);
+    public void createResultView(String url) {
+        resultLayout.removeAllViews();
+        updateStatusText("Done");
+        if (mode.equals("html")) {
+            WebView web = new WebView(this);
 
-        // Add textview 2
-        TextView textView2 = new TextView(this);
-        LayoutParams layoutParams = new LayoutParams(LayoutParams.WRAP_CONTENT,
-                LayoutParams.WRAP_CONTENT);
-        layoutParams.gravity = Gravity.RIGHT;
-        layoutParams.setMargins(10, 10, 10, 10); // (left, top, right, bottom)
-        textView2.setLayoutParams(layoutParams);
-        textView2.setText("programmatically created TextView2");
-        textView2.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        textView2.setBackgroundColor(0xffffdbdb); // hex color 0xAARRGGBB
-        resultLayout.addView(textView2);
+            web.setWebViewClient(new WebViewClient() {
+                @Override
+                public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                    Log.i("WEB_VIEW_TEST", "error code:" + errorCode);
+                    updateStatusText("Error - " + description);
+                    super.onReceivedError(view, errorCode, description, failingUrl);
+                }
+            });
+            web.loadUrl(url);
+            resultLayout.addView(web);
+        } else if (mode.equals("plain")) {
+            TextView txtView = new TextView(this);
+            new HTTPTask(txtView).execute(url);
+            ScrollView sv = new ScrollView(this);
+            sv.addView(txtView);
+            resultLayout.addView(sv);
+        }
     }
 
+    private class HTTPTask extends AsyncTask<String, Void, String> {
+        TextView tView;
 
-
-    public class HTTPTask extends AsyncTask<String, Void, String> {
+        public HTTPTask(TextView t){
+            this.tView = t;
+        }
 
         @Override
         protected String doInBackground(String... urls) {
@@ -163,48 +187,12 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         protected void onPostExecute(String result) {
-            if (result.startsWith("exception")) {
+            System.out.println(" #########################################"+result);
+            if (result.startsWith("Error")) {
                 updateStatusText(result);
             } else {
-                // add result to text/image/html view
+                tView.setText(result);
             }
-        }
-
-    }
-
-    private void check(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_another_broken);
-
-        urlText = (EditText)findViewById(R.id.url_text);
-
-
-        Intent intent = getIntent();
-
-        ArrayList<String> parsed_strings = intent.getExtras().getStringArrayList("mode_result");
-        String mode=(parsed_strings.get(0));
-        String result=(parsed_strings.get(1));
-        String url=(parsed_strings.get(2));
-        final RelativeLayout lm = (RelativeLayout) findViewById(R.id.main);
-
-        if (mode.equals("html")) {
-            WebView web = new WebView(this);
-            web.setWebViewClient(new WebViewClient());
-            web.loadUrl(url);
-            //web.loadData(result,"text/html",null);
-            lm.addView(web);
-        }
-        else if (mode.equals("plain")) {
-            TextView txt =new TextView(this);
-            txt.append(result);
-            ScrollView sv = new ScrollView(this);
-            sv.addView(txt);
-            lm.addView(sv);
-        }
-        else if (mode.equals("image")) {
-            ImageView img = new ImageView(this);
-            new DownloadImageTask(img).execute(url);
-            lm.addView(img);
         }
     }
 }
